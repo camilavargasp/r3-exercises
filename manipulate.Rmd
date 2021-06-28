@@ -1,0 +1,143 @@
+---
+title: "Manipulate"
+author: "Camila Vargas"
+date: "6/21/2021"
+output: html_document
+---
+
+## Set up
+
+```{r setup, include=FALSE}
+# packages
+library(tibble)
+library(DT)
+library(tidyverse)
+
+# set variables
+csv_url  <- "https://oceanview.pfeg.noaa.gov/erddap/tabledap/cciea_AC.csv"
+dir_data <- "data"
+
+# derived variables
+csv <- file.path(dir_data, basename(csv_url))
+
+# create directory (creates the data forlder)
+dir.create(dir_data)
+
+# download file into the data folder
+download.file(csv_url, csv)
+
+```
+
+
+## Read data
+
+```{r}
+d <- read.csv(csv)
+
+
+# read csv by skipping first two lines, so no header
+d <- read.csv(csv, skip = 2, header = FALSE)
+d
+
+# convert to tibble
+tibble::tibble(d)
+
+# update data frame to original column names. Takes the names of the csv and names the coluns of d with them.
+names(d) <- names(read.csv(csv))
+d
+
+# show table
+DT::datatable(d)
+
+```
+
+## Wrangling
+```{r}
+d <- d %>% 
+  # tibble
+  tibble() %>% 
+  # mutate time
+  mutate(
+    time = as.Date(substr(time, 1, 10))) %>% 
+  # select columns
+  select(
+    time, 
+    starts_with("total_fisheries_revenue")) %>% 
+  # filter rows
+  filter(
+    time >= as.Date("1981-01-01"))
+
+datatable(d)
+
+```
+
+
+## Tydy-ing
+```{r}
+
+d <- d %>% 
+  pivot_longer(-time) ##all columns exept for time
+
+datatable(d)
+
+```
+
+## Summarizing
+```{r}
+
+d <- d %>% 
+  mutate(
+    region = str_replace(name, "total_fisheries_revenue_", "")) %>% 
+  select(time, region, value)
+
+datatable(d)
+
+d_sum <- d %>% 
+  group_by(region) %>% 
+  summarize(
+    avg_revenue = mean(value))
+
+
+datatable(d_sum) %>% 
+  formatCurrency("avg_revenue") ## fomats the avg_revenue column to output as dollas!
+
+```
+
+
+## Apply functions with `purrr` on a `nest`ed `tibble`
+
+
+```{r}
+
+n <- d %>% 
+  group_by(region) %>% 
+  nest(
+    data = c(time, value))
+n
+
+# create a lineal model per region of data
+
+n <- n %>% 
+  mutate(
+    lm    = map(data, function(d){
+      #browser() - use to explore what is happening inside the function
+      lm(value ~ time, d) } ),
+    trend = map_dbl(lm, function(m){
+      coef(summary(m))["time","Estimate"] }))
+
+n
+
+n %>% 
+  select(region, trend) %>% 
+  datatable()
+
+
+
+```
+
+
+
+
+
+
+
